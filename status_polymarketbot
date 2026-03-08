@@ -1,0 +1,61 @@
+#!/bin/zsh
+set -euo pipefail
+
+ROOT_DIR="${0:A:h}"
+SESSION_ENV="$ROOT_DIR/runtime/session.env"
+LEGACY_ENV="$ROOT_DIR/runtime/launchd.env"
+MANAGER_PID_FILE="$ROOT_DIR/runtime/manager.pid"
+CHILD_PID_FILE="$ROOT_DIR/runtime/polymarketbot.pid"
+RUN_LOG="$ROOT_DIR/runtime/polymarketbot.log"
+
+is_pid_running() {
+    local pid="$1"
+    [[ -n "$pid" ]] || return 1
+    kill -0 "$pid" 2>/dev/null
+}
+
+cleanup_stale_files() {
+    if [[ -f "$MANAGER_PID_FILE" ]] && ! is_pid_running "$(<"$MANAGER_PID_FILE")"; then
+        rm -f "$MANAGER_PID_FILE"
+    fi
+    if [[ -f "$CHILD_PID_FILE" ]] && ! is_pid_running "$(<"$CHILD_PID_FILE")"; then
+        rm -f "$CHILD_PID_FILE"
+    fi
+}
+
+cleanup_stale_files
+
+runtime_env="$SESSION_ENV"
+if [[ ! -f "$runtime_env" && -f "$LEGACY_ENV" ]]; then
+    runtime_env="$LEGACY_ENV"
+fi
+
+if [[ -f "$MANAGER_PID_FILE" ]]; then
+    manager_pid="$(<"$MANAGER_PID_FILE")"
+    if is_pid_running "$manager_pid"; then
+        echo "manager active: PID $manager_pid"
+        ps -p "$manager_pid" -o pid=,etime=,command=
+    fi
+else
+    echo "manager not active"
+fi
+
+if [[ -f "$CHILD_PID_FILE" ]]; then
+    child_pid="$(<"$CHILD_PID_FILE")"
+    if is_pid_running "$child_pid"; then
+        echo
+        echo "bot active: PID $child_pid"
+        ps -p "$child_pid" -o pid=,etime=,command=
+    fi
+fi
+
+if [[ -f "$runtime_env" ]]; then
+    echo
+    echo "last saved run configuration:"
+    sed -n '1,120p' "$runtime_env"
+fi
+
+if [[ -f "$RUN_LOG" ]]; then
+    echo
+    echo "runtime log: $RUN_LOG"
+fi
